@@ -1,0 +1,16 @@
+{
+  "name": "Lernkarten Intensivpflege",
+  "short_name": "Lernkarten",
+  "description": "Karteikarten für die Fachweiterbildung Intensivpflege",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f0f4f8",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
