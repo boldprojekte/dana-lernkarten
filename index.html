@@ -80,7 +80,7 @@ body {
 .login-btn:hover { background: #2563eb; }
 
 /* ── App ── */
-#app { display: none; padding-bottom: 80px; }
+#app { display: none; }
 
 header {
   background: #fff;
@@ -374,15 +374,12 @@ select, .btn {
 
 /* ── Navigation ── */
 .nav-bar {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  background: #fff;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
-  padding: 10px 16px;
+  max-width: 700px;
+  margin: 8px auto;
+  padding: 0 16px;
   display: flex;
   justify-content: center;
   gap: 10px;
-  z-index: 100;
 }
 .nav-bar .btn {
   min-width: 110px;
@@ -519,10 +516,10 @@ select, .btn {
       <div class="settings-body">
         <div class="settings-section">
           <h3>Fortschritt sichern</h3>
-          <p class="settings-hint">Speichere deinen Lernfortschritt als Code, um ihn auf einem anderen Geraet einzufuegen.</p>
+          <p class="settings-hint">Lade deinen Lernfortschritt als Datei herunter oder importiere eine gespeicherte Datei.</p>
           <div class="settings-buttons">
-            <button class="btn btn-primary" onclick="exportProgress()">&#x2B07; Exportieren</button>
-            <button class="btn btn-secondary" onclick="importProgress()">&#x2B06; Importieren</button>
+            <button class="btn btn-primary" onclick="exportProgress()">&#x2B07; Herunterladen</button>
+            <button class="btn btn-secondary" onclick="importProgress()">&#x2B06; Datei laden</button>
           </div>
         </div>
         <div class="settings-section">
@@ -548,14 +545,14 @@ select, .btn {
     <div class="progress-text" id="progressText"></div>
   </div>
 
-  <div class="card-container" id="cardContainer"></div>
-
-  <div class="keyboard-hint">&#8592; &#8594; Navigieren &middot; Leertaste Umdrehen/Pruefen</div>
-
   <div class="nav-bar">
     <button class="btn btn-secondary" onclick="navigate(-1)">&larr; Zurueck</button>
     <button class="btn btn-primary" onclick="navigate(1)">Weiter &rarr;</button>
   </div>
+
+  <div class="card-container" id="cardContainer"></div>
+
+  <div class="keyboard-hint">&#8592; &#8594; Navigieren &middot; Leertaste Umdrehen/Pruefen</div>
 </div>
 
 <script>
@@ -729,36 +726,46 @@ function closeSettingsOutside(event) {
 }
 
 function exportProgress() {
-  const code = btoa(JSON.stringify(leitnerData));
-  navigator.clipboard.writeText(code).then(() => {
-    alert('Fortschritt kopiert!\n\nAuf dem anderen Geraet:\nEinstellungen > Importieren > Code einfuegen.');
-  }).catch(() => {
-    // Fallback
-    const el = document.createElement('textarea');
-    el.value = code;
-    el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    alert('Fortschritt kopiert!\n\nAuf dem anderen Geraet:\nEinstellungen > Importieren > Code einfuegen.');
-  });
+  const json = JSON.stringify(leitnerData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const now = new Date();
+  const ts = now.getFullYear() + '-'
+    + String(now.getMonth()+1).padStart(2,'0') + '-'
+    + String(now.getDate()).padStart(2,'0') + '_'
+    + String(now.getHours()).padStart(2,'0') + '-'
+    + String(now.getMinutes()).padStart(2,'0');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'lernkarten-fortschritt_' + ts + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function importProgress() {
-  const code = prompt('Fortschritt-Code einfuegen:');
-  if (!code || !code.trim()) return;
-  try {
-    const data = JSON.parse(atob(code.trim()));
-    leitnerData = data;
-    saveLeitnerData();
-    buildCardList();
-    renderCard();
-    toggleSettings();
-    alert('Fortschritt importiert!');
-  } catch {
-    alert('Ungueltiger Code. Bitte nochmal versuchen.');
-  }
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        leitnerData = data;
+        saveLeitnerData();
+        buildCardList();
+        renderCard();
+        toggleSettings();
+        alert('Fortschritt importiert!');
+      } catch {
+        alert('Ungueltige Datei. Bitte eine gueltige Fortschritt-Datei waehlen.');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
 function logout() {
@@ -1059,19 +1066,6 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ── Touch/Swipe ──
-let touchStartX = 0, touchStartY = 0;
-document.addEventListener('touchstart', e => {
-  touchStartX = e.changedTouches[0].screenX;
-  touchStartY = e.changedTouches[0].screenY;
-});
-document.addEventListener('touchend', e => {
-  const dx = e.changedTouches[0].screenX - touchStartX;
-  const dy = e.changedTouches[0].screenY - touchStartY;
-  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-    navigate(dx > 0 ? -1 : 1);
-  }
-});
 
 window.addEventListener('resize', adjustFlipHeight);
 
