@@ -1,5 +1,5 @@
-const CACHE_NAME = 'lernkarten-v2';
-const ASSETS = ['./index.html', './manifest.json', './icon.svg'];
+const CACHE_NAME = 'lernkarten-v3';
+const ASSETS = ['./index.html', './cards.json', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
