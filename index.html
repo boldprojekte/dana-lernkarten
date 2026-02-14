@@ -513,6 +513,7 @@ select, .btn {
       <select id="deckSelect" onchange="applyDeck(this.value)"></select>
       <select id="modeSelect" onchange="setMode(this.value)">
         <option value="learn">Lernen</option>
+        <option value="random">Zufall</option>
         <option value="browse">Durchblaettern</option>
       </select>
       <select id="filterSelect" onchange="applyFilter(this.value)"></select>
@@ -535,6 +536,16 @@ select, .btn {
           <div class="settings-buttons">
             <button class="btn btn-primary" onclick="exportProgress()">&#x2B07; Herunterladen</button>
             <button class="btn btn-secondary" onclick="importProgress()">&#x2B06; Datei laden</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Lerneinstellungen</h3>
+          <p class="settings-hint">Wie viele neue Karten pro Tag dazukommen sollen. Wiederholungen sind unbegrenzt.</p>
+          <div class="settings-buttons" id="newCardsButtons">
+            <button class="btn btn-secondary" onclick="setNewCardsPerDay(5)">5</button>
+            <button class="btn btn-secondary" onclick="setNewCardsPerDay(10)">10</button>
+            <button class="btn btn-secondary" onclick="setNewCardsPerDay(15)">15</button>
+            <button class="btn btn-secondary" onclick="setNewCardsPerDay(20)">20</button>
           </div>
         </div>
         <div class="settings-section">
@@ -579,11 +590,11 @@ const PASSWORD_HASH = '2c9e0a2585dc7406589a3724f0027811506e0f133726303a15d6779d5
 // ── Leitner Config ──
 const BOXES = {
   0: { name: 'Neu', interval: 0 },
-  1: { name: 'Box 1', interval: 0 },
-  2: { name: 'Box 2', interval: 1 },
-  3: { name: 'Box 3', interval: 3 },
-  4: { name: 'Box 4', interval: 7 },
-  5: { name: 'Box 5', interval: 14 }
+  1: { name: 'Box 1', interval: 1 },
+  2: { name: 'Box 2', interval: 3 },
+  3: { name: 'Box 3', interval: 7 },
+  4: { name: 'Box 4', interval: 14 },
+  5: { name: 'Box 5', interval: 30 }
 };
 
 // ── State ──
@@ -643,6 +654,7 @@ function showApp() {
   loadLeitnerData();
   buildDeckSelect();
   buildFilterSelect();
+  highlightNewCardsButton();
   setMode('learn');
 }
 
@@ -730,6 +742,7 @@ function isDue(card) {
 
 function markCorrect(card) {
   const data = getCardData(card);
+  if (data.box === 0) trackNewCardIntroduced();
   data.box = Math.min(data.box + 1, 5);
   data.nextReview = addDays(todayStr(), BOXES[data.box].interval);
   saveLeitnerData();
@@ -738,10 +751,62 @@ function markCorrect(card) {
 
 function markWrong(card) {
   const data = getCardData(card);
+  if (data.box === 0) trackNewCardIntroduced();
   data.box = 1;
   data.nextReview = todayStr();
   saveLeitnerData();
   sessionStats.wrong++;
+}
+
+// ── Daily Limit ──
+const DEFAULT_NEW_PER_DAY = 15;
+
+function getSettings() {
+  try {
+    return JSON.parse(localStorage.getItem('lk_settings')) || {};
+  } catch { return {}; }
+}
+
+function saveSettings(s) {
+  localStorage.setItem('lk_settings', JSON.stringify(s));
+}
+
+function getNewCardsPerDay() {
+  return getSettings().newCardsPerDay || DEFAULT_NEW_PER_DAY;
+}
+
+function getDailyTracker() {
+  try {
+    const d = JSON.parse(localStorage.getItem('lk_daily')) || {};
+    if (d.date !== todayStr()) return { date: todayStr(), newIntroduced: 0 };
+    return d;
+  } catch { return { date: todayStr(), newIntroduced: 0 }; }
+}
+
+function saveDailyTracker(t) {
+  localStorage.setItem('lk_daily', JSON.stringify(t));
+}
+
+function trackNewCardIntroduced() {
+  const t = getDailyTracker();
+  t.newIntroduced++;
+  saveDailyTracker(t);
+}
+
+function setNewCardsPerDay(n) {
+  const s = getSettings();
+  s.newCardsPerDay = n;
+  saveSettings(s);
+  highlightNewCardsButton();
+  buildCardList();
+  renderCard();
+}
+
+function highlightNewCardsButton() {
+  const current = getNewCardsPerDay();
+  document.querySelectorAll('#newCardsButtons .btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.textContent) === current);
+  });
 }
 
 // ── Modes & Filtering ──
@@ -765,10 +830,28 @@ function buildCardList() {
   if (filter === 'mc') pool = pool.filter(c => c.type === 'mc');
   else if (filter === 'offen') pool = pool.filter(c => c.type === 'offen');
 
-  // Learn mode: only due cards, sorted by box (lowest first)
   if (mode === 'learn') {
-    pool = pool.filter(c => isDue(c));
+    // Wiederholungen: Box >= 1 und faellig
+    const reviews = pool.filter(c => {
+      const d = getCardData(c);
+      return d.box >= 1 && isDue(c);
+    });
+
+    // Neue Karten: Box 0, begrenzt auf Tageslimit
+    const limit = getNewCardsPerDay();
+    const tracker = getDailyTracker();
+    const remaining = Math.max(0, limit - tracker.newIntroduced);
+    const newCards = pool.filter(c => getCardData(c).box === 0).slice(0, remaining);
+
+    // Wiederholungen zuerst, dann neue
+    pool = [...reviews, ...newCards];
     pool.sort((a, b) => getCardData(a).box - getCardData(b).box);
+  } else if (mode === 'random') {
+    // Alle Karten, zufaellig gemischt
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
   }
 
   cards = pool;
@@ -876,10 +959,21 @@ function updateStats() {
     '<div class="box-stat box-stat-4"><span class="count">' + counts[4] + '</span>Box 4</div>' +
     '<div class="box-stat box-stat-5"><span class="count">' + counts[5] + '</span>Box 5</div>';
 
-  document.getElementById('dueInfo').innerHTML =
-    mode === 'learn'
-      ? '<strong>' + cards.length + '</strong> Karten faellig' + (sessionStats.correct + sessionStats.wrong > 0 ? ' &middot; ' + sessionStats.correct + ' richtig, ' + sessionStats.wrong + ' falsch' : '')
-      : '<strong>' + dueCount + '</strong> Karten faellig &middot; ' + pool.length + ' gesamt';
+  const dueInfo = document.getElementById('dueInfo');
+  if (mode === 'learn') {
+    const reviewCount = cards.filter(c => getCardData(c).box >= 1).length;
+    const newCount = cards.filter(c => getCardData(c).box === 0).length;
+    const tracker = getDailyTracker();
+    const limit = getNewCardsPerDay();
+    dueInfo.innerHTML = '<strong>' + reviewCount + '</strong> Wiederholungen + <strong>' + newCount + '</strong> neue' +
+      ' (Limit: ' + tracker.newIntroduced + '/' + limit + ')' +
+      (sessionStats.correct + sessionStats.wrong > 0 ? ' &middot; ' + sessionStats.correct + ' richtig, ' + sessionStats.wrong + ' falsch' : '');
+  } else if (mode === 'random') {
+    dueInfo.innerHTML = '<strong>' + cards.length + '</strong> Karten' +
+      (sessionStats.correct + sessionStats.wrong > 0 ? ' &middot; ' + sessionStats.correct + ' richtig, ' + sessionStats.wrong + ' falsch' : '');
+  } else {
+    dueInfo.innerHTML = '<strong>' + dueCount + '</strong> Karten faellig &middot; ' + pool.length + ' gesamt';
+  }
 }
 
 // ── Navigation ──
@@ -900,6 +994,10 @@ function nextCard() {
       currentIndex = (currentIndex + 1) % cards.length;
     }
   } else {
+    if (currentIndex + 1 >= cards.length && mode === 'random') {
+      renderSessionComplete();
+      return;
+    }
     currentIndex = (currentIndex + 1) % cards.length;
   }
   renderCard();
@@ -939,7 +1037,7 @@ function renderCard() {
   updateStats();
 
   if (cards.length === 0) {
-    if (mode === 'learn') {
+    if (mode === 'learn' || mode === 'random') {
       renderSessionComplete();
     } else {
       document.getElementById('cardContainer').innerHTML =

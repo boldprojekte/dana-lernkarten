@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lernkarten-v3';
+const CACHE_NAME = 'lernkarten-v4';
 const ASSETS = ['./index.html', './cards.json', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
